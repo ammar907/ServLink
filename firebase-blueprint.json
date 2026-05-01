@@ -1,0 +1,144 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the ServLink marketplace.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["customer", "provider"] },
+        "studentStatus": { "type": "string", "enum": ["none", "pending", "verified", "rejected"] },
+        "studentDetails": {
+          "type": "object",
+          "properties": {
+            "university": { "type": "string" },
+            "studentId": { "type": "string" },
+            "idCardUrl": { "type": "string" }
+          }
+        },
+        "bio": { "type": "string" },
+        "avatar": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "A service listed by a provider.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "providerId": { "type": "string" },
+        "providerName": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "category": { "type": "string" },
+        "city": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "studentOnly": { "type": "boolean" },
+        "serviceType": { "type": "string", "enum": ["visiting", "digital"] },
+        "paymentMethod": { "type": "string", "enum": ["COD", "Voucher"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["providerId", "title", "description", "price", "category", "city", "serviceType", "paymentMethod"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A service appointment.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "serviceTitle": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "providerId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "pending_cod", "pending_voucher", "confirmed", "completed", "cancelled"] },
+        "paymentMethod": { "type": "string", "enum": ["COD", "Voucher"] },
+        "voucherCode": { "type": "string" },
+        "voucherVerified": { "type": "boolean" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["serviceId", "customerId", "providerId", "status", "date"]
+    },
+    "ContactMessage": {
+      "title": "Contact Message",
+      "description": "A message from the help desk form.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "message"]
+    },
+    "ServiceRequest": {
+      "title": "Service Request",
+      "description": "A request for a service posted by a customer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "city": { "type": "string" },
+        "budget": { "type": "number" },
+        "deadline": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "closed", "fulfilled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerId", "title", "description", "category", "city", "status"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "A user review for a service.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "serviceId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "rating": { "type": "number", "minimum": 1, "maximum": 5 },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["serviceId", "authorId", "rating", "comment"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data."
+    },
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Service listings."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Service bookings."
+    },
+    "/contactMessages/{messageId}": {
+      "schema": "ContactMessage",
+      "description": "Messages from the contact form."
+    },
+    "/requests/{requestId}": {
+      "schema": "ServiceRequest",
+      "description": "Customer service requests."
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Service reviews."
+    }
+  }
+}
