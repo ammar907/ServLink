@@ -1,9 +1,10 @@
 {
-  "apiKey": "AIzaSyBs8WFCVjDixJmTA2G3-y1CcTIhq_C3Bzg",
-  "authDomain": "servlink-f235b.firebaseapp.com",
-  "projectId": "servlink-f235b",
-  "storageBucket": "servlink-f235b.firebasestorage.app",
-  "messagingSenderId": "340163751407",
-  "appId": "1:340163751407:web:74074df162402b3be95a1a",
-  "measurementId": "G-9GRX1HFQXC"
+  "projectId": "gen-lang-client-0568440513",
+  "appId": "1:1075752737677:web:daf8c19f0284434dff3bc4",
+  "apiKey": "AIzaSyCJVRxjI9LqzVfJN0MVJKr4CFXxBy4qoug",
+  "authDomain": "gen-lang-client-0568440513.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-d0590bbf-93eb-437d-a45f-671b22485a79",
+  "storageBucket": "gen-lang-client-0568440513.firebasestorage.app",
+  "messagingSenderId": "1075752737677",
+  "measurementId": ""
 }

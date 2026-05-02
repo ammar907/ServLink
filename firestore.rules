@@ -1,162 +1,58 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
+    // Helper functions
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return request.auth.uid == userId; }
+    function isAdmin() { 
+      return isSignedIn() && 
+      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
+    function isValidId(id) { return id is string && id.size() <= 128; }
 
-    // --- Helpers ---
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && request.auth.token.email == 'ammarzia0031@gmail.com';
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    // --- User Validation ---
-    function isValidUser(data) {
-      let requiredKeys = ['uid', 'name', 'email', 'role', 'createdAt', 'updatedAt', 'city', 'phone'];
-      return data.keys().hasAll(requiredKeys) &&
-             data.uid == request.auth.uid &&
-             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
-             data.email is string && data.email.size() <= 150 &&
-             data.role in ['customer', 'provider'] &&
-             data.createdAt == request.time &&
-             data.updatedAt == request.time;
-    }
-
-    // --- Service Validation ---
-    function isValidService(data) {
-      return data.keys().hasAll(['providerId', 'providerName', 'title', 'description', 'price', 'category', 'city', 'createdAt', 'images', 'serviceType', 'paymentMethod']) &&
-             data.providerId == request.auth.uid &&
-             data.providerName is string &&
-             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
-             data.description is string && data.description.size() > 0 && data.description.size() <= 2000 &&
-             data.price is number && data.price >= 0 &&
-             data.category is string &&
-             data.city is string &&
-             data.images is list &&
-             data.images.size() <= 10 &&
-             data.serviceType in ['visiting', 'digital'] &&
-             data.paymentMethod in ['COD', 'Voucher'] &&
-             data.createdAt == request.time;
-    }
-
-    // --- Booking Validation ---
-    function isValidBooking(data) {
-      return data.keys().hasAll(['serviceId', 'customerId', 'providerId', 'status', 'date', 'createdAt']) &&
-             data.serviceId is string &&
-             data.customerId == request.auth.uid &&
-             data.providerId is string &&
-             data.status in ['pending', 'pending_cod', 'pending_voucher', 'confirmed', 'completed', 'cancelled'] &&
-             (!data.keys().contains('paymentMethod') || data.paymentMethod in ['COD', 'Voucher']) &&
-             (!data.keys().contains('voucherCode') || data.voucherCode is string) &&
-             (!data.keys().contains('voucherVerified') || data.voucherVerified is bool) &&
-             data.date is string &&
-             data.createdAt == request.time;
-    }
-
-    // --- Contact Message Validation ---
-    function isValidContactMessage(data) {
-      return data.keys().hasAll(['name', 'email', 'message', 'createdAt']) &&
-             data.name is string && data.name.size() <= 100 &&
-             data.email is string && data.email.size() <= 150 &&
-             (!data.keys().contains('subject') || (data.subject is string && data.subject.size() <= 200)) &&
-             data.message is string && data.message.size() <= 5000 &&
-             data.createdAt == request.time;
-    }
-
-    // --- Service Request Validation ---
-    function isValidRequest(data) {
-      return data.keys().hasAll(['customerId', 'customerName', 'title', 'description', 'category', 'city', 'status', 'createdAt']) &&
-             data.customerId == request.auth.uid &&
-             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
-             data.description is string && data.description.size() > 0 && data.description.size() <= 2000 &&
-             data.status in ['open', 'closed', 'fulfilled'] &&
-             data.createdAt == request.time;
-    }
-
-    // --- Review Validation ---
-    function isValidReview(data) {
-      return data.keys().hasAll(['serviceId', 'authorId', 'authorName', 'rating', 'comment', 'createdAt']) &&
-             data.serviceId is string &&
-             data.authorId == request.auth.uid &&
-             data.authorName is string && data.authorName.size() > 0 &&
-             data.rating is number && data.rating >= 1 && data.rating <= 5 &&
-             data.comment is string && data.comment.size() > 0 && data.comment.size() <= 1000 &&
-             data.createdAt == request.time;
-    }
-
-    // --- Match Rules ---
-
+    // Users
     match /users/{userId} {
-      allow get: if isSignedIn();
-      allow list: if isAdmin();
-      allow create: if isOwner(userId) && isValidUser(incoming());
-      allow update: if isOwner(userId) && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'bio', 'avatar', 'updatedAt', 'city']) &&
-        incoming().updatedAt == request.time
-      );
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
     }
 
+    // Services
     match /services/{serviceId} {
-      allow read: if true;
-      allow create: if isSignedIn() && isValidService(incoming());
-      allow update: if isSignedIn() && existing().providerId == request.auth.uid && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'price', 'category', 'city', 'images', 'updatedAt']) &&
-        incoming().updatedAt == request.time
-      );
-      allow delete: if isSignedIn() && existing().providerId == request.auth.uid;
+      allow read: if true; // Publicly searchable
+      allow create: if isSignedIn() && request.resource.data.sellerId == request.auth.uid;
+      allow update: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin());
     }
 
+    // Bookings
     match /bookings/{bookingId} {
-      allow read: if isSignedIn() && (resource.data.customerId == request.auth.uid || resource.data.providerId == request.auth.uid);
-      allow create: if isSignedIn() && isValidBooking(incoming());
+      allow read: if isSignedIn() && (
+        resource.data.customerId == request.auth.uid || 
+        resource.data.sellerId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && request.resource.data.customerId == request.auth.uid;
       allow update: if isSignedIn() && (
-        (resource.data.customerId == request.auth.uid || resource.data.providerId == request.auth.uid) &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'voucherVerified', 'updatedAt']) &&
-        incoming().serviceId == existing().serviceId &&
-        incoming().customerId == existing().customerId &&
-        incoming().providerId == existing().providerId
+        resource.data.customerId == request.auth.uid || 
+        resource.data.sellerId == request.auth.uid ||
+        isAdmin()
       );
+      allow delete: if isAdmin();
     }
 
-    match /contactMessages/{messageId} {
-      allow create: if isValidContactMessage(incoming());
-    }
-
-    match /requests/{requestId} {
-      allow read: if true;
-      allow create: if isSignedIn() && isValidRequest(incoming());
-      allow update: if isSignedIn() && existing().customerId == request.auth.uid && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'city', 'budget', 'deadline', 'status', 'updatedAt']) &&
-        incoming().customerId == existing().customerId
-      );
-      allow delete: if isSignedIn() && existing().customerId == request.auth.uid;
-    }
-
+    // Reviews
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isSignedIn() && isValidReview(incoming()) && 
-                    get(/databases/$(database)/documents/services/$(incoming().serviceId)).data.providerId != request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.customerId == request.auth.uid;
+      allow update: if isSignedIn() && (isOwner(resource.data.customerId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
