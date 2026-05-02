@@ -1,243 +1,212 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { User, Mail, Phone, Lock, UserPlus, AlertCircle, CheckCircle } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, db, storage, handleFirestoreError, OperationType } from '../lib/firebase';
-import { Upload, X } from 'lucide-react';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
+import { UserPlus, Mail, Lock, User, MapPin, AlertCircle, ShieldCheck } from 'lucide-react';
 
 export default function Register() {
   const [formData, setFormData] = useState({
-    name: '',
+    fullName: '',
     email: '',
-    phone: '',
     password: '',
-    role: 'customer' as 'customer' | 'provider',
-    city: 'Karachi'
+    confirmPassword: '',
+    city: '',
+    role: 'customer' as 'customer' | 'seller',
+    terms: false
   });
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
-    try {
-      // 1. Validation
-      if (formData.password.length < 6) {
-        setError('Password must be at least 6 characters long.');
-        setLoading(false);
-        return;
-      }
 
-      const { user } = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-      
-      // Create user profile in Firestore
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords don't match");
+      return;
+    }
+    if (!formData.terms) {
+      setError("Please accept terms and conditions");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
+      const user = userCredential.user;
+
       await setDoc(doc(db, 'users', user.uid), {
         uid: user.uid,
-        name: formData.name,
+        fullName: formData.fullName,
         email: formData.email,
-        phone: formData.phone,
-        role: formData.role,
         city: formData.city,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        role: formData.role,
+        createdAt: new Date().toISOString(),
+        verified: false,
+        bio: '',
+        phone: '',
+        address: '',
+        avatarUrl: ''
       });
 
-      // Show success message briefly
-      setSuccess(true);
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
+      navigate('/dashboard');
     } catch (err: any) {
-      console.error("Registration error:", err);
-      let message = 'Registration failed. Please try again.';
-      
-      if (err.code === 'auth/email-already-in-use') {
-        message = 'This email is already registered. Please login instead.';
-      } else if (err.code === 'auth/invalid-email') {
-        message = 'Please enter a valid email address.';
-      } else if (err.code === 'auth/weak-password') {
-        message = 'Password is too weak.';
-      } else if (err.message && err.message.includes('{')) {
-        try {
-          const parsed = JSON.parse(err.message);
-          message = parsed.error || message;
-        } catch (pErr) {
-          message = err.message;
-        }
-      }
-      
-      setError(message);
+      setError(err.message || 'Failed to register');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex-grow flex items-center justify-center p-4 bg-gray-50 py-12">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="max-w-xl w-full bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden"
+    <div className="min-h-screen py-20 px-4 flex items-center justify-center">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-2xl glass p-8 md:p-12 rounded-[2.5rem] border border-white/10 shadow-2xl"
       >
-        <div className="p-8 md:p-12">
-          <div className="text-center mb-10">
-            <Link to="/" className="inline-flex items-center gap-2 mb-6">
-              <div className="w-10 h-10 bg-brand rounded-xl flex items-center justify-center text-white font-bold text-xl">SL</div>
-              <span className="text-2xl font-bold tracking-tight text-gray-900">ServLink</span>
-            </Link>
-            <h1 className="text-2xl font-bold text-gray-900">Create your account</h1>
-            <p className="text-gray-500 mt-2">Join Pakistan's fastest growing service community</p>
+        <div className="text-center mb-10">
+          <div className="w-16 h-16 bg-brand-primary/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <UserPlus className="text-brand-primary" size={32} />
+          </div>
+          <h1 className="text-3xl font-black tracking-tight mb-2">Create Account</h1>
+          <p className="text-gray-400 font-bold uppercase tracking-widest text-sm">Join the marketplace today</p>
+        </div>
+
+        {error && (
+          <div className="mb-8 p-4 glass border-red-500/50 flex items-center gap-3 text-red-400 text-sm rounded-xl">
+            <AlertCircle size={18} />
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-widest text-gray-500 ml-1">Full Name</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input
+                type="text"
+                required
+                className="input-field pl-12 h-14"
+                placeholder="Ammar Zia"
+                value={formData.fullName}
+                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+              />
+            </div>
           </div>
 
-          {success && (
-            <div className="mb-6 p-4 bg-green-50 text-green-600 rounded-xl flex gap-3 items-center text-sm font-bold border border-green-100">
-              <CheckCircle size={18} />
-              <span>Registration Successful! Redirecting to Dashboard...</span>
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-widest text-gray-500 ml-1">Email Address</label>
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input
+                type="email"
+                required
+                className="input-field pl-12 h-14"
+                placeholder="ammar@example.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
             </div>
-          )}
+          </div>
 
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-xl flex gap-3 items-center text-sm">
-              <AlertCircle size={18} />
-              <span>{error}</span>
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-widest text-gray-500 ml-1">Password</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input
+                type="password"
+                required
+                className="input-field pl-12 h-14"
+                placeholder="••••••••"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              />
             </div>
-          )}
+          </div>
 
-          <form onSubmit={handleRegister} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700 font-semibold">Full Name</label>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <input 
-                    type="text" 
-                    id="regName"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    placeholder="Ahmed Ali"
-                    className="input-field pl-12" 
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Phone Member</label>
-                <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <input 
-                    type="tel" 
-                    id="regPhone"
-                    required
-                    value={formData.phone}
-                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                    placeholder="0300 1234567"
-                    className="input-field pl-12" 
-                  />
-                </div>
-              </div>
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-widest text-gray-500 ml-1">Confirm Password</label>
+            <div className="relative">
+              <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input
+                type="password"
+                required
+                className="input-field pl-12 h-14"
+                placeholder="••••••••"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+              />
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <input 
-                    type="email" 
-                    id="regEmail"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({...formData, email: e.target.value})}
-                    placeholder="name@example.com"
-                    className="input-field pl-12" 
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-gray-700">Your City</label>
-                <select 
-                   value={formData.city}
-                   onChange={(e) => setFormData({...formData, city: e.target.value})}
-                   className="input-field"
-                >
-                  {['Karachi', 'Lahore', 'Islamabad', 'Faisalabad', 'Multan', 'Peshawar'].map(city => (
-                    <option key={city} value={city}>{city}</option>
-                  ))}
-                </select>
-              </div>
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-widest text-gray-500 ml-1">City</label>
+            <div className="relative">
+              <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
+              <input
+                type="text"
+                required
+                className="input-field pl-12 h-14"
+                placeholder="Islamabad"
+                value={formData.city}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+              />
             </div>
+          </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input 
-                  type="password" 
-                  id="regPassword"
-                  required
-                  value={formData.password}
-                  onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  placeholder="••••••••"
-                  className="input-field pl-12" 
-                />
-              </div>
+          <div className="space-y-2">
+            <label className="text-xs font-black uppercase tracking-widest text-gray-500 ml-1">Account Role</label>
+            <div className="flex p-1 h-14 glass rounded-lg gap-1">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, role: 'customer' })}
+                className={`flex-1 rounded-md text-sm font-black uppercase tracking-wider transition-all ${formData.role === 'customer' ? 'bg-brand-primary text-black' : 'text-gray-400 hover:text-white'}`}
+              >
+                Customer
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, role: 'seller' })}
+                className={`flex-1 rounded-md text-sm font-black uppercase tracking-wider transition-all ${formData.role === 'seller' ? 'bg-brand-primary text-black' : 'text-gray-400 hover:text-white'}`}
+              >
+                Seller
+              </button>
             </div>
+          </div>
 
-            <div className="space-y-4">
-              <label className="text-sm font-medium text-gray-700 block text-center">I want to join as a:</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div 
-                  onClick={() => setFormData({...formData, role: 'customer'})}
-                  className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
-                    formData.role === 'customer' ? 'border-brand bg-blue-50 text-brand' : 'border-gray-100 hover:border-gray-200 text-gray-500'
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${formData.role === 'customer' ? 'bg-brand text-white' : 'bg-gray-100'}`}>
-                    <CheckCircle size={16} />
-                  </div>
-                  <span className="font-bold">Customer</span>
-                  <span className="text-[10px] uppercase tracking-wider opacity-60">I only want to hire</span>
-                </div>
-                <div 
-                  onClick={() => setFormData({...formData, role: 'provider'})}
-                  className={`cursor-pointer p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
-                    formData.role === 'provider' ? 'border-brand bg-blue-50 text-brand' : 'border-gray-100 hover:border-gray-200 text-gray-500'
-                  }`}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${formData.role === 'provider' ? 'bg-brand text-white' : 'bg-gray-100'}`}>
-                    <CheckCircle size={16} />
-                  </div>
-                  <span className="font-bold">Provider</span>
-                  <span className="text-[10px] uppercase tracking-wider opacity-60">I want to provide & hire</span>
-                </div>
-              </div>
-            </div>
+          <div className="md:col-span-2 mt-4">
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                className="w-5 h-5 rounded border-white/10 bg-white/5 checked:bg-brand-primary transition-all cursor-pointer"
+                checked={formData.terms}
+                onChange={(e) => setFormData({ ...formData, terms: e.target.checked })}
+              />
+              <span className="text-sm text-gray-400 font-medium group-hover:text-gray-300">
+                I accept the <Link to="/terms" className="text-brand-primary font-bold hover:underline">Terms and Conditions</Link>
+              </span>
+            </label>
+          </div>
 
-            <button 
-              type="submit" 
-              id="submitBtn"
+          <div className="md:col-span-2 pt-6">
+            <button
+              type="submit"
               disabled={loading}
-              className="btn-primary w-full py-4 flex items-center justify-center gap-2"
+              className="btn-primary w-full h-14 text-lg uppercase tracking-widest disabled:opacity-50"
             >
-              {loading ? 'Creating account...' : 'Create Account'}
-              <UserPlus size={18} />
+              {loading ? 'Creating Account...' : 'Complete Registration'}
             </button>
-          </form>
-
-          <div className="mt-8 text-center pt-8 border-t border-gray-100 space-y-4">
-            <p className="text-sm text-gray-500">
-              Already have an account? <Link to="/login" className="text-brand font-bold">Log in</Link>
-            </p>
-            <p className="text-[10px] text-gray-400 max-w-xs mx-auto">
-              By creating an account, you agree to our <Link to="/terms" className="text-brand hover:underline">Terms & Conditions</Link> and Privacy Policy.
-            </p>
           </div>
+        </form>
+
+        <div className="mt-10 pt-8 border-t border-white/5 text-center">
+          <p className="text-gray-400 font-medium">
+            Already have an account? <Link to="/login" className="text-brand-primary font-bold hover:underline">Sign In</Link>
+          </p>
         </div>
       </motion.div>
     </div>

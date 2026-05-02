@@ -1,390 +1,235 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, onSnapshot, doc, getDoc, orderBy, limit, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { 
-  LayoutDashboard, ShoppingBag, PlusCircle, Settings, 
-  ArrowRight, Calendar, User, Clock, CheckCircle2, ChevronRight,
-  Sparkles, Ticket, DollarSign, ShieldAlert
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useAuth } from '../lib/AuthContext';
+import { collection, query, where, getDocs, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../lib/firebase';
+import { motion } from 'motion/react';
+import { LayoutDashboard, ShoppingBag, ListChecks, Star, Settings, Trash2, CheckCircle, Clock, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function Dashboard() {
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [bookings, setBookings] = useState<any[]>([]);
-  const [services, setServices] = useState<any[]>([]);
-  const [totalCompleted, setTotalCompleted] = useState(0);
+  const { user, profile, isAdmin, isSeller } = useAuth();
+  const [data, setData] = useState<any>({ services: [], bookings: [], allServices: [], allBookings: [] });
   const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState<string | null>(null);
-  
-  const navigate = useNavigate();
-
-  const handleUpdateStatus = async (bookingId: string, newStatus: string, additionalData = {}) => {
-    setProcessingId(bookingId);
-    try {
-      await updateDoc(doc(db, 'bookings', bookingId), {
-        status: newStatus,
-        updatedAt: serverTimestamp(),
-        ...additionalData
-      });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `bookings/${bookingId}`);
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'completed': return 'bg-green-100 text-green-600';
-      case 'pending': return 'bg-orange-100 text-orange-600';
-      case 'pending_cod': return 'bg-yellow-100 text-yellow-700';
-      case 'pending_voucher': return 'bg-brand/10 text-brand';
-      case 'confirmed': return 'bg-blue-100 text-blue-600';
-      case 'cancelled': return 'bg-red-100 text-red-600';
-      default: return 'bg-gray-100 text-gray-500';
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'pending_cod': return 'Pending COD';
-      case 'pending_voucher': return 'Pending Voucher';
-      default: return status.charAt(0).toUpperCase() + status.slice(1);
-    }
-  };
+  const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
-    let unsubscribeBookingsC: () => void;
-    let unsubscribeBookingsP: () => void;
-    let unsubscribeServices: () => void;
-    let unsubscribeCompleted: () => void;
+    if (user) fetchData();
+  }, [user]);
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (u) => {
-      if (u) {
-        setUser(u);
-        try {
-          // Fetch profile with retry logic
-          let profileFetched = false;
-          let attempts = 0;
-          let profileData = null;
-
-          while (!profileFetched && attempts < 3) {
-            const profileSnap = await getDoc(doc(db, 'users', u.uid));
-            if (profileSnap.exists()) {
-              profileData = profileSnap.data();
-              setProfile(profileData);
-              profileFetched = true;
-            } else {
-              attempts++;
-              if (attempts < 3) await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
-
-          if (profileFetched && profileData) {
-            // 1. Listen for Recent Bookings (Customer side)
-            const cq = query(
-              collection(db, 'bookings'),
-              where('customerId', '==', u.uid),
-              limit(50) // Fetch more then sort client-side
-            );
-            
-            unsubscribeBookingsC = onSnapshot(cq, (snap) => {
-              const customerList = snap.docs.map(d => ({ id: d.id, ...(d.data() as any), type: 'hired' }));
-              setBookings(prev => {
-                const others = prev.filter(b => b.type !== 'hired');
-                return [...customerList, ...others].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).slice(0, 10);
-              });
-            }, (err) => handleFirestoreError(err, OperationType.GET, 'bookings (customer)'));
-
-            // 2. Listen for Recent Bookings (Provider side)
-            if (profileData.role === 'provider') {
-              const pq = query(
-                collection(db, 'bookings'),
-                where('providerId', '==', u.uid),
-                limit(50)
-              );
-              
-              unsubscribeBookingsP = onSnapshot(pq, (snap) => {
-                const providerList = snap.docs.map(d => ({ id: d.id, ...(d.data() as any), type: 'service' }));
-                setBookings(prev => {
-                  const others = prev.filter(b => b.type !== 'service');
-                  return [...providerList, ...others].sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)).slice(0, 10);
-                });
-              }, (err) => handleFirestoreError(err, OperationType.GET, 'bookings (provider)'));
-
-              // 3. Listen for My Services
-              const sq = query(
-                collection(db, 'services'),
-                where('providerId', '==', u.uid)
-              );
-              unsubscribeServices = onSnapshot(sq, (snap) => {
-                const sList = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-                sList.sort((a: any, b: any) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-                setServices(sList);
-              }, (err) => handleFirestoreError(err, OperationType.GET, 'services'));
-            }
-
-            // 4. Listen for Completed count
-            const compQ = query(
-              collection(db, 'bookings'),
-              where(profileData.role === 'provider' ? 'providerId' : 'customerId', '==', u.uid),
-              where('status', '==', 'completed')
-            );
-            unsubscribeCompleted = onSnapshot(compQ, (snap) => {
-              setTotalCompleted(snap.size);
-            }, (err) => handleFirestoreError(err, OperationType.GET, 'bookings (completed)'));
-
-            setLoading(false);
-          } else {
-            console.warn("No profile found for user");
-            setLoading(false);
-          }
-        } catch (err) {
-          console.error("Dashboard primary fetch error:", err);
-          setLoading(false);
-        }
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      if (isAdmin) {
+        const servicesSnap = await getDocs(collection(db, 'services'));
+        const bookingsSnap = await getDocs(collection(db, 'bookings'));
+        setData({
+          allServices: servicesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          allBookings: bookingsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        });
+      } else if (isSeller) {
+        const servicesQ = query(collection(db, 'services'), where('sellerId', '==', user?.uid), orderBy('createdAt', 'desc'));
+        const bookingsQ = query(collection(db, 'bookings'), where('sellerId', '==', user?.uid), orderBy('createdAt', 'desc'));
+        const [servicesS, bookingsS] = await Promise.all([getDocs(servicesQ), getDocs(bookingsQ)]);
+        setData({
+          services: servicesS.docs.map(d => ({ id: d.id, ...d.data() })),
+          bookings: bookingsS.docs.map(d => ({ id: d.id, ...d.data() }))
+        });
       } else {
-        navigate('/login');
+        const bookingsQ = query(collection(db, 'bookings'), where('customerId', '==', user?.uid), orderBy('createdAt', 'desc'));
+        const bookingsS = await getDocs(bookingsQ);
+        setData({
+          bookings: bookingsS.docs.map(d => ({ id: d.id, ...d.data() }))
+        });
       }
-    });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => {
-      unsubscribeAuth();
-      if (unsubscribeBookingsC) unsubscribeBookingsC();
-      if (unsubscribeBookingsP) unsubscribeBookingsP();
-      if (unsubscribeServices) unsubscribeServices();
-      if (unsubscribeCompleted) unsubscribeCompleted();
-    };
-  }, [navigate]);
+  const handleUpdateBooking = async (id: string, status: string) => {
+    try {
+      await updateDoc(doc(db, 'bookings', id), { status });
+      fetchData();
+    } catch (e) {
+      alert('Error updating status');
+    }
+  };
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-96">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand"></div>
-    </div>
-  );
+  const handleDeleteService = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this service?')) return;
+    try {
+      await deleteDoc(doc(db, 'services', id));
+      fetchData();
+    } catch (e) {
+      alert('Error deleting service');
+    }
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-brand-primary">Loading Dashboard...</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      <div className="mb-10">
-        <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Bonjour, {profile?.name || 'User'}!</h1>
-        <p className="text-gray-500 mt-2">Here's what's happening with your account today.</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Section */}
-        <div className="lg:col-span-2 space-y-8">
-          {/* Stats & Spotlight */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <div className="bg-white border border-gray-100 p-8 rounded-[2rem] shadow-xl shadow-gray-100/50 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-brand mb-4">
-                  <Calendar size={20} />
-                </div>
-                <div className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mb-1">Active Bookings</div>
-              </div>
-              <div className="text-4xl font-black text-gray-900">{bookings.length}</div>
-            </div>
-
-            {profile?.role === 'provider' ? (
-              <div className="bg-white border border-gray-100 p-8 rounded-[2rem] shadow-xl shadow-gray-100/50 flex flex-col justify-between">
-                <div>
-                  <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 mb-4">
-                    <ShoppingBag size={20} />
-                  </div>
-                  <div className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mb-1">Listed Services</div>
-                </div>
-                <div className="text-4xl font-black text-gray-900">{services.length}</div>
-              </div>
-            ) : (
-              <div className="bg-brand p-8 rounded-[2rem] shadow-xl shadow-blue-200 text-white flex flex-col justify-between group overflow-hidden relative">
-                <div className="absolute -top-4 -right-4 opacity-10 group-hover:scale-110 transition-transform">
-                  <Sparkles size={100} />
-                </div>
-                <div className="text-blue-100 font-bold text-[10px] uppercase tracking-widest mb-1 relative z-10">Get Inspired</div>
-                <div className="text-xl font-bold leading-tight relative z-10">Find Amazing Services</div>
-                <Link to="/search" className="mt-4 flex items-center gap-1 text-xs font-black text-white hover:gap-2 transition-all relative z-10">
-                  EXPLORE <ArrowRight size={14} />
-                </Link>
-              </div>
-            )}
-
-            <div className="bg-white border border-gray-100 p-8 rounded-[2rem] shadow-xl shadow-gray-100/50 flex flex-col justify-between">
-              <div>
-                <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center text-green-600 mb-4">
-                  <CheckCircle2 size={20} />
-                </div>
-                <div className="text-gray-400 font-bold text-[10px] uppercase tracking-widest mb-1">Completed</div>
-              </div>
-              <div className="text-4xl font-black text-gray-900">{totalCompleted}</div>
-            </div>
-          </div>
-
-          {/* Recent Bookings */}
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-gray-50 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">Recent Appointments</h2>
-              <Link to="/bookings" className="text-sm font-bold text-brand hover:underline">View All</Link>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {bookings.length > 0 ? bookings.map((booking) => (
-                <div key={booking.id} className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-brand">
-                      <Calendar size={24} />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-gray-900">{booking.serviceTitle}</h4>
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-tighter ${
-                          booking.type === 'service' ? 'bg-orange-100 text-orange-600' : 'bg-blue-100 text-blue-600'
-                        }`}>
-                          {booking.type === 'service' ? 'Providing' : 'Hiring'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-400">{booking.date} at {booking.time}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-3">
-                    <div className="flex items-center gap-4">
-                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${getStatusStyle(booking.status)}`}>
-                        {getStatusLabel(booking.status)}
-                      </span>
-                      <ChevronRight size={18} className="text-gray-300" />
-                    </div>
-
-                    {/* Action Buttons for Providers */}
-                    {booking.type === 'service' && booking.status !== 'completed' && booking.status !== 'cancelled' && (
-                      <div className="flex gap-2">
-                        {booking.paymentMethod === 'COD' && booking.status === 'pending_cod' && (
-                          <button 
-                            onClick={() => handleUpdateStatus(booking.id, 'completed')}
-                            disabled={processingId === booking.id}
-                            className="text-[10px] font-black bg-brand text-white px-3 py-1 rounded-lg flex items-center gap-1 hover:bg-blue-700 transition-colors"
-                          >
-                            <DollarSign size={10} />
-                            MARK PAID
-                          </button>
-                        )}
-                        {booking.paymentMethod === 'Voucher' && booking.status === 'pending_voucher' && (
-                          <button 
-                            onClick={() => {
-                              const code = prompt('Enter Customer Voucher Code:');
-                              if (code === booking.voucherCode) {
-                                handleUpdateStatus(booking.id, 'completed', { voucherVerified: true });
-                                alert('Voucher Verified! Payment confirmed.');
-                              } else if (code) {
-                                alert('Invalid Voucher Code. Please try again.');
-                              }
-                            }}
-                            disabled={processingId === booking.id}
-                            className="text-[10px] font-black bg-indigo-600 text-white px-3 py-1 rounded-lg flex items-center gap-1 hover:bg-indigo-700 transition-colors"
-                          >
-                            <Ticket size={10} />
-                            VERIFY VOUCHER
-                          </button>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Info for Customers */}
-                    {booking.type === 'hired' && booking.paymentMethod === 'Voucher' && booking.status === 'pending_voucher' && (
-                      <div className="flex flex-col items-end">
-                        <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter mb-1">Your Voucher Code</div>
-                        <div className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-lg text-xs font-black border border-indigo-100 flex items-center gap-2">
-                           <Ticket size={12} />
-                           {booking.voucherCode}
-                        </div>
-                      </div>
-                    )}
-                    {booking.type === 'hired' && booking.paymentMethod === 'COD' && booking.status === 'pending_cod' && (
-                      <div className="text-[9px] font-bold text-yellow-600 bg-yellow-50 px-2 py-1 rounded-md border border-yellow-100 text-right">
-                        PAY CASH ON VISIT
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )) : (
-                <div className="p-12 text-center text-gray-400">
-                  <Clock size={40} className="mx-auto mb-4 opacity-20" />
-                  <p>You have no recent bookings.</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Actions */}
-          {profile?.role === 'provider' && (
-            <div className="bg-brand rounded-2xl p-8 text-white flex flex-col md:flex-row justify-between items-center gap-6">
-              <div>
-                <h3 className="text-2xl font-bold mb-2">Grow your business</h3>
-                <p className="text-blue-100">Reach more customers by listing new services or updating existing ones.</p>
-              </div>
-              <Link to="/add-service" className="bg-white text-brand px-6 py-3 rounded-xl font-bold hover:bg-gray-100 transition-all flex items-center gap-2 whitespace-nowrap">
-                <PlusCircle size={20} />
-                <span>List New Service</span>
-              </Link>
-            </div>
-          )}
-        </div>
-
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="flex flex-col md:flex-row gap-8">
         {/* Sidebar */}
-        <div className="space-y-8">
-          {/* Profile Card */}
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-6 text-center">
-            <div className="w-24 h-24 bg-gray-100 rounded-2xl mx-auto mb-4 overflow-hidden">
-               {profile?.avatar ? (
-                 <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
-               ) : (
-                 <div className="w-full h-full flex items-center justify-center text-gray-300">
-                   <User size={48} />
-                 </div>
-               )}
-            </div>
-            <h3 className="text-xl font-bold text-gray-900">{profile?.name}</h3>
-            <p className="text-gray-400 text-sm mb-4 capitalize">{profile?.role}</p>
-
-            <Link to="/profile" className="block w-full py-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors mb-2">
-              Edit Profile
-            </Link>
-            <button 
-              onClick={() => {
-                const url = `${window.location.origin}/profile/${user.uid}`;
-                navigator.clipboard.writeText(url);
-                alert('Profile link copied to clipboard!');
-              }}
-              className="block w-full py-2 bg-gray-900 rounded-lg text-sm font-bold text-white hover:bg-gray-800 transition-colors"
-            >
-              Share Profile
+        <aside className="md:w-64 space-y-2">
+          <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'overview' ? 'bg-brand-primary text-black font-black' : 'hover:bg-white/5 text-gray-400'}`}>
+            <LayoutDashboard size={20} /> Overview
+          </button>
+          {isSeller && (
+            <button onClick={() => setActiveTab('services')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'services' ? 'bg-brand-primary text-black font-black' : 'hover:bg-white/5 text-gray-400'}`}>
+              <ListChecks size={20} /> My Services
             </button>
-          </div>
-
-          {/* My Services (Scrollable if provider) */}
-          {profile?.role === 'provider' && (
-             <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
-               <div className="p-6 border-b border-gray-50">
-                 <h2 className="text-lg font-bold text-gray-900">My Listings</h2>
-               </div>
-               <div className="p-4 space-y-4">
-                 {services.length > 0 ? services.map(service => (
-                   <div key={service.id} className="flex gap-3 group">
-                     <div className="w-16 h-16 rounded-lg bg-gray-100 overflow-hidden shrink-0">
-                       <img src={service.images?.[0] || 'https://via.placeholder.com/150'} alt="Svc" className="w-full h-full object-cover" />
-                     </div>
-                     <div className="flex-grow min-w-0">
-                       <h4 className="text-sm font-bold text-gray-900 truncate group-hover:text-brand cursor-pointer">{service.title}</h4>
-                       <p className="text-xs text-brand font-bold mt-1">Rs. {service.price}</p>
-                     </div>
-                   </div>
-                 )) : (
-                   <div className="py-8 text-center text-gray-400 text-sm">No services listed yet.</div>
-                 )}
-               </div>
-             </div>
           )}
-        </div>
+          <button onClick={() => setActiveTab('bookings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'bookings' ? 'bg-brand-primary text-black font-black' : 'hover:bg-white/5 text-gray-400'}`}>
+            <ShoppingBag size={20} /> {isSeller ? 'Service Requests' : 'My Bookings'}
+          </button>
+          {isAdmin && (
+            <>
+              <div className="pt-4 pb-2 px-4 text-[10px] font-black uppercase text-brand-primary tracking-[0.2em]">Admin Tools</div>
+              <button onClick={() => setActiveTab('all-services')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'all-services' ? 'bg-brand-primary text-black font-black' : 'hover:bg-white/5 text-gray-400'}`}>
+                <Settings size={20} /> All Services
+              </button>
+              <button onClick={() => setActiveTab('all-bookings')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === 'all-bookings' ? 'bg-brand-primary text-black font-black' : 'hover:bg-white/5 text-gray-400'}`}>
+                <ShoppingBag size={20} /> All Bookings
+              </button>
+            </>
+          )}
+        </aside>
+
+        {/* Content */}
+        <main className="flex-1 space-y-8">
+          {activeTab === 'overview' && (
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="glass p-8 rounded-3xl">
+                  <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-2">Total Bookings</p>
+                  <div className="text-4xl font-black text-brand-primary">{data.bookings?.length || data.allBookings?.length || 0}</div>
+                </div>
+                {isSeller && (
+                  <div className="glass p-8 rounded-3xl">
+                    <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-2">Total Services</p>
+                    <div className="text-4xl font-black text-brand-primary">{data.services?.length || 0}</div>
+                  </div>
+                )}
+                <div className="glass p-8 rounded-3xl">
+                  <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-2">Status</p>
+                  <div className="text-xl font-black text-white">{profile?.role || 'User'} Member</div>
+                </div>
+              </div>
+
+               <div className="glass p-8 rounded-3xl">
+                <h3 className="text-xl font-black mb-6">Recent Activity</h3>
+                <div className="space-y-4">
+                  {(isSeller ? data.bookings : data.bookings).slice(0, 3).map((b: any) => (
+                    <div key={b.id} className="flex items-center justify-between p-4 glass rounded-xl border-white/5">
+                      <div className="flex items-center gap-4">
+                         <div className="w-10 h-10 rounded-full bg-brand-primary/10 flex items-center justify-center text-brand-primary">
+                           <Clock size={18} />
+                         </div>
+                         <div>
+                            <p className="font-black">Booking for {b.serviceTitle}</p>
+                            <p className="text-xs text-gray-500">Status: <span className="uppercase text-brand-primary">{b.status}</span></p>
+                         </div>
+                      </div>
+                      <Link to="/dashboard" onClick={() => setActiveTab('bookings')} className="text-brand-primary text-xs font-bold uppercase hover:underline">Details</Link>
+                    </div>
+                  ))}
+                  {(!isSeller && data.bookings?.length === 0) && <p className="text-gray-500 font-medium">No recent activity found.</p>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'services' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-2xl font-black">My Services</h2>
+                <Link to="/add-service" className="btn-primary py-2 text-sm uppercase tracking-wider">Add New</Link>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {data.services.map((s: any) => (
+                  <div key={s.id} className="glass rounded-2xl overflow-hidden group border border-white/5 flex">
+                    <img src={s.images?.[0] || 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=300'} className="w-24 h-full object-cover" />
+                    <div className="p-4 flex-grow">
+                      <h4 className="font-black line-clamp-1">{s.title}</h4>
+                      <p className="text-brand-primary font-bold text-sm mb-2">Rs. {s.price}</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleDeleteService(s.id)} className="w-8 h-8 rounded-lg glass flex items-center justify-center text-red-400 hover:bg-red-400 hover:text-black transition-all">
+                          <Trash2 size={14} />
+                        </button>
+                        <Link to={`/service/${s.id}`} className="w-8 h-8 rounded-lg glass flex items-center justify-center text-brand-primary hover:bg-brand-primary hover:text-black transition-all">
+                          <ArrowRight size={14} />
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'bookings' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-black">{isSeller ? 'Incoming Requests' : 'My Bookings'}</h2>
+              <div className="overflow-x-auto glass rounded-3xl">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-widest">Service</th>
+                      <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-widest">{isSeller ? 'Customer' : 'Seller'}</th>
+                      <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-widest">Date</th>
+                      <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-widest">Status</th>
+                      <th className="px-6 py-4 text-xs font-black uppercase text-gray-500 tracking-widest">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.bookings.map((b: any) => (
+                      <tr key={b.id} className="border-b border-white/5 last:border-0 hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 font-black text-sm">{b.serviceTitle}</td>
+                        <td className="px-6 py-4 text-sm font-medium">{isSeller ? b.customerName : 'Service Provider'}</td>
+                        <td className="px-6 py-4 text-sm text-gray-400">{new Date(b.bookingDate).toLocaleDateString()}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase ${b.status === 'confirmed' ? 'bg-brand-primary/20 text-brand-primary' : b.status === 'pending' ? 'bg-yellow-400/20 text-yellow-500' : 'bg-gray-400/20 text-gray-400'}`}>
+                            {b.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                           {isSeller && b.status === 'pending' && (
+                             <button onClick={() => handleUpdateBooking(b.id, 'confirmed')} className="text-brand-primary hover:underline text-xs font-black uppercase">Accept</button>
+                           )}
+                           {!isSeller && b.status === 'confirmed' && (
+                             <span className="text-brand-primary text-xs font-black">Booked!</span>
+                           )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+           {isAdmin && activeTab === 'all-services' && (
+            <div className="space-y-6">
+              <h2 className="text-2xl font-black">All Marketplace Services</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {data.allServices.map((s: any) => (
+                  <div key={s.id} className="glass p-4 rounded-2xl flex items-center justify-between border-white/5">
+                    <div>
+                      <p className="font-black text-sm">{s.title}</p>
+                      <p className="text-[10px] text-gray-500 uppercase font-black tracking-widest">BY: {s.sellerName} | {s.city}</p>
+                    </div>
+                    <button onClick={() => handleDeleteService(s.id)} className="text-red-400 hover:text-red-300 transition-colors">
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );
