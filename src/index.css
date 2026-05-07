@@ -1,50 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-brand-primary: #10b981;
-  --color-brand-secondary: #06b6d4;
-  --color-brand-dark: #050505;
-  --color-brand-surface: #121212;
-  
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Outfit", sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
 
-  --animate-float: float 3s ease-in-out infinite;
-  --animate-glow: glow 2s ease-in-out infinite alternate;
-
-  @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
-  }
-  @keyframes glow {
-    from { box-shadow: 0 0 5px #10b981, 0 0 10px #10b981; }
-    to { box-shadow: 0 0 20px #10b981, 0 0 30px #10b981; }
-  }
+  --color-cyber-cyan: #00f2ff;
+  --color-cyber-purple: #bc13fe;
+  --color-cyber-black: #050505;
+  --color-glass: rgba(255, 255, 255, 0.05);
+  --color-glass-border: rgba(255, 255, 255, 0.1);
 }
 
-@layer base {
-  body {
-    @apply bg-brand-dark text-gray-100 antialiased;
-    background-image: 
-      radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.05) 0px, transparent 50%),
-      radial-gradient(at 100% 0%, rgba(6, 182, 212, 0.05) 0px, transparent 50%);
-  }
+:root {
+  background-color: var(--color-cyber-black);
+  color: white;
+  font-family: var(--font-sans);
 }
 
-@layer components {
-  .glass {
-    @apply bg-white/5 backdrop-blur-md border border-white/10;
-  }
-  
-  .btn-primary {
-    @apply bg-brand-primary hover:bg-brand-primary/80 text-black font-bold py-2 px-6 rounded-lg transition-all active:scale-95 flex items-center justify-center gap-2;
-  }
-  
-  .btn-secondary {
-    @apply bg-transparent border-2 border-brand-primary text-brand-primary hover:bg-brand-primary hover:text-black font-bold py-2 px-6 rounded-lg transition-all active:scale-95 flex items-center justify-center gap-2;
-  }
+.mesh-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(circle at 20% 30%, rgba(0, 242, 255, 0.15) 0%, transparent 50%),
+              radial-gradient(circle at 80% 70%, rgba(188, 19, 254, 0.15) 0%, transparent 50%);
+  pointer-events: none;
+}
 
-  .input-field {
-    @apply bg-white/5 border border-white/10 rounded-lg px-4 py-2 focus:border-brand-primary focus:ring-1 focus:ring-brand-primary outline-none transition-all w-full;
-  }
+.glass-card {
+  background: var(--color-glass);
+  backdrop-filter: blur(15px);
+  border: 1px solid var(--color-glass-border);
+  border-radius: 16px;
+}
+
+.neon-glow-cyan {
+  box-shadow: 0 0 15px rgba(0, 242, 255, 0.4);
+}
+
+.neon-text {
+  text-shadow: 0 0 8px var(--color-cyber-cyan), 0 0 12px var(--color-cyber-cyan);
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.flicker {
+  animation: flicker 3s infinite;
+}
+
+@keyframes flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+  20%, 24%, 55% { opacity: 0.4; }
+}
+
+.border-beam {
+  position: relative;
+}
+
+.border-beam::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 16px;
+  padding: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-cyber-cyan), var(--color-cyber-purple), transparent);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.category-icon {
+  background: linear-gradient(135deg, var(--color-cyber-cyan), var(--color-cyber-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 5px rgba(0,242,255,0.5));
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2300f2ff'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1em;
+  background-color: #0d0d0d;
+  color: #00f2ff;
+}
+
+option {
+  background-color: #0d0d0d;
+  color: #00f2ff;
+  padding: 12px;
+}
+
+select:focus {
+  outline: none;
+  border-color: rgba(0, 242, 255, 0.5);
+  box-shadow: 0 0 10px rgba(0, 242, 255, 0.2);
 }
