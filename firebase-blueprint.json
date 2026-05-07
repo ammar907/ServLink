@@ -1,95 +1,90 @@
 {
   "entities": {
     "User": {
-      "title": "User Profile",
-      "description": "Stores user account information and roles.",
+      "title": "User",
+      "description": "A user of the ServLink platform.",
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
-        "fullName": { "type": "string" },
+        "name": { "type": "string" },
         "email": { "type": "string" },
         "role": { "type": "string", "enum": ["customer", "seller", "admin"] },
-        "phone": { "type": "string" },
         "city": { "type": "string" },
         "address": { "type": "string" },
         "bio": { "type": "string" },
-        "avatarUrl": { "type": "string" },
+        "profilePic": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "fullName", "email", "role"]
+      "required": ["uid", "name", "email", "role", "city", "createdAt"]
     },
     "Service": {
-      "title": "Marketplace Service",
-      "description": "Details of the services offered by sellers.",
+      "title": "Service",
+      "description": "A service offered by a seller.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
+        "serviceId": { "type": "string" },
         "sellerId": { "type": "string" },
-        "sellerName": { "type": "string" },
         "title": { "type": "string" },
-        "description": { "type": "string" },
         "category": { "type": "string" },
-        "city": { "type": "string" },
+        "description": { "type": "string" },
         "price": { "type": "number" },
-        "paymentMethod": { "type": "string", "enum": ["COD", "Voucher"] },
-        "images": { "type": "array" },
-        "verified": { "type": "boolean" },
+        "city": { "type": "string" },
+        "paymentType": { "type": "string", "enum": ["COD", "Voucher"] },
+        "imageUrl": { "type": "string" },
+        "isVerified": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["sellerId", "title", "description", "category", "city", "price"]
+      "required": ["serviceId", "sellerId", "title", "category", "price", "city", "paymentType", "isVerified"]
     },
     "Booking": {
-      "title": "Service Booking",
-      "description": "Tracks transactions between customers and sellers.",
+      "title": "Booking",
+      "description": "A booking made by a customer.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
+        "bookingId": { "type": "string" },
         "customerId": { "type": "string" },
-        "customerName": { "type": "string" },
         "sellerId": { "type": "string" },
         "serviceId": { "type": "string" },
-        "serviceTitle": { "type": "string" },
-        "status": { "type": "string", "enum": ["pending", "confirmed", "completed", "cancelled"] },
-        "bookingDate": { "type": "string", "format": "date-time" },
-        "appointmentTime": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "completed"] },
         "paymentMethod": { "type": "string" },
         "voucherCode": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["customerId", "sellerId", "serviceId", "status", "bookingDate"]
+      "required": ["bookingId", "customerId", "sellerId", "serviceId", "date", "status", "paymentMethod"]
     },
     "Review": {
-      "title": "Service Review",
-      "description": "User reviews for completed services.",
+      "title": "Review",
+      "description": "A review for a service.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
+        "reviewId": { "type": "string" },
         "serviceId": { "type": "string" },
-        "customerId": { "type": "string" },
         "customerName": { "type": "string" },
         "rating": { "type": "number" },
         "comment": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["serviceId", "customerId", "rating", "comment"]
+      "required": ["reviewId", "serviceId", "customerName", "rating", "timestamp"]
     }
   },
   "firestore": {
-    "users": {
+    "/users/{userId}": {
       "schema": "User",
-      "description": "Collection of app users."
+      "description": "User profiles."
     },
-    "services": {
+    "/services/{serviceId}": {
       "schema": "Service",
-      "description": "Collection of services listed by sellers."
+      "description": "Service listings."
     },
-    "bookings": {
+    "/bookings/{bookingId}": {
       "schema": "Booking",
-      "description": "Collection of bookings made by customers."
+      "description": "Service bookings."
     },
-    "reviews": {
+    "/reviews/{reviewId}": {
       "schema": "Review",
-      "description": "Collection of reviews for services."
+      "description": "Service reviews."
     }
   }
 }
